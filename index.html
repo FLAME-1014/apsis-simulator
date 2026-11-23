@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1016" />
+    <meta name="description" content="Explore an evolving solar system, run asteroid impact experiments, and fly a lander to the surface of Mars." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Apsis · Solar system simulator</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <button class="brand" id="home" type="button" aria-label="Apsis observatory">
+          <span class="brand-mark" aria-hidden="true"><i></i></span>
+          <span><strong>Apsis</strong><small>Solar system simulator</small></span>
+        </button>
+        <nav class="mode-tabs" aria-label="Simulation mode">
+          <button type="button" data-mode="orbit" aria-pressed="true"><span class="mode-symbol orbit-symbol" aria-hidden="true"></span>Observatory</button>
+          <button type="button" data-mode="impact" aria-pressed="false"><span class="mode-symbol impact-symbol" aria-hidden="true"></span>Asteroid lab</button>
+          <button type="button" data-mode="flight" aria-pressed="false"><span class="mode-symbol flight-symbol" aria-hidden="true"></span>Mars mission</button>
+        </nav>
+        <div class="header-tools">
+          <span class="header-status"><i id="status-light"></i><span id="sim-status">Running</span></span>
+          <button type="button" class="icon-button help-button" id="open-help" aria-label="Controls and display settings" title="Controls and display settings">?</button>
+        </div>
+      </header>
+
+      <main class="workspace" id="workspace" data-mode="orbit">
+        <aside class="left-rail" aria-label="Simulation setup">
+          <section data-panel="orbit" class="rail-section">
+            <div class="rail-heading"><h2>Body catalog</h2><span>09</span></div>
+            <div id="body-catalog" class="body-catalog" aria-label="Select a celestial body"></div>
+            <div class="rail-note">
+              <span class="tiny-tag"><i></i> N-body gravity</span>
+              <p>The Sun and eight planets interact. Each integration step spans one hour of simulation time.</p>
+            </div>
+          </section>
+          <section data-panel="impact" class="rail-section" hidden>
+            <div class="rail-heading"><h2>Impact setup</h2></div>
+            <div class="rail-content">
+              <span class="field-title" id="trial-label">Trajectory</span>
+              <div class="trial-options" role="group" aria-labelledby="trial-label">
+                <button type="button" data-trial="direct" aria-pressed="false"><span class="trial-path direct" aria-hidden="true"></span><span>Head-on</span></button>
+                <button type="button" data-trial="grazing" aria-pressed="true"><span class="trial-path grazing" aria-hidden="true"></span><span>Glancing</span></button>
+                <button type="button" data-trial="miss" aria-pressed="false"><span class="trial-path miss" aria-hidden="true"></span><span>Near miss</span></button>
+              </div>
+              <div class="restitution-field">
+                <label for="restitution">Restitution</label><output id="restitution-value" for="restitution">0.62</output>
+                <input type="range" id="restitution" min="0" max="1" step="0.01" value="0.62" />
+                <span>Inelastic</span><span>Elastic</span>
+              </div>
+            </div>
+            <div class="rail-note"><p>Restitution sets how much speed the rocks keep along the line of contact when they rebound.</p></div>
+          </section>
+          <section data-panel="flight" class="rail-section" hidden>
+            <div class="rail-heading"><h2>Flight plan</h2></div>
+            <div class="rail-content">
+              <ol class="flight-plan" id="flight-plan">
+                <li data-phase="approach"><span></span><div>Approach<small>Above 20 km</small></div></li>
+                <li data-phase="braking"><span></span><div>Braking burn<small>20 km to 1.8 km</small></div></li>
+                <li data-phase="descent"><span></span><div>Descent<small>Below 1.8 km</small></div></li>
+                <li data-phase="final"><span></span><div>Final approach<small>Below 150 m</small></div></li>
+                <li data-phase="touchdown"><span></span><div>Touchdown<small>Inside the landing zone</small></div></li>
+              </ol>
+            </div>
+            <div class="rail-note flight-keys">
+              <span class="field-title">Manual flight</span>
+              <div><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd><span>Translate</span></div>
+              <div><kbd>Space</kbd><span>Main engine</span></div>
+              <div><kbd>Shift</kbd><span>Brake sideways</span></div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="stage" id="stage" aria-label="Interactive 3D viewport">
+          <canvas id="simulation-canvas" tabindex="0" aria-label="3D simulation. Drag to orbit or pinch to zoom."></canvas>
+          <p class="view-error" id="view-error" role="status">Preparing the simulation…</p>
+          <div class="stage-header">
+            <div>
+              <p class="eyebrow"><i></i><span id="stage-frame">SUN-CENTERED VIEW</span></p>
+              <h1 id="stage-title">Solar system</h1>
+            </div>
+            <div class="stage-actions" role="group" aria-label="Viewport options">
+              <button type="button" class="view-button" id="path-toggle" aria-pressed="true">Orbits</button>
+              <button type="button" class="view-button" id="label-toggle" aria-pressed="true">Labels</button>
+              <button type="button" class="view-button" id="camera-toggle" hidden>Overhead</button>
+              <button type="button" class="view-button reset-view" id="camera-reset" aria-label="Reset camera" title="Reset camera"><span aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <div class="projected-labels" id="orbit-labels"></div>
+          <div class="projected-labels" id="impact-labels" hidden>
+            <span class="object-label impact-label" id="asteroid-label-a">A-17</span>
+            <span class="object-label impact-label" id="asteroid-label-b">B-04</span>
+          </div>
+          <div class="projected-labels" id="flight-labels" hidden>
+            <span class="object-label pad-label" id="pad-marker">Landing zone</span>
+          </div>
+          <div class="stage-bottom" data-stage="orbit">
+            <span class="scale-note"><span class="scale-line" aria-hidden="true"></span>Distances compressed · radii enlarged</span>
+            <span class="stage-hint">Drag to rotate <i></i> Scroll to zoom</span>
+          </div>
+          <div class="stage-bottom" data-stage="impact" hidden>
+            <span class="scale-note"><span class="scale-line" aria-hidden="true"></span>Grid spacing 1 km</span>
+            <span id="impact-overlay" class="stage-hint">Trial ready</span>
+          </div>
+          <div class="flight-hud" data-stage="flight" hidden>
+            <div class="altitude-readout"><span class="eyebrow">Altitude above ground</span><strong id="altitude">106.0 <small>km</small></strong></div>
+            <div class="target-readout"><span class="eyebrow">To landing zone</span><strong id="target-direction">E 52.0 km · N 14.0 km</strong></div>
+          </div>
+          <div class="touch-controls" id="touch-controls" hidden role="group" aria-label="Manual spacecraft controls">
+            <div class="touch-dpad">
+              <button type="button" class="touch-north" data-thrust="KeyW" aria-label="Thrust north">↑</button>
+              <button type="button" class="touch-west" data-thrust="KeyA" aria-label="Thrust west">←</button>
+              <button type="button" class="touch-south" data-thrust="KeyS" aria-label="Thrust south">↓</button>
+              <button type="button" class="touch-east" data-thrust="KeyD" aria-label="Thrust east">→</button>
+            </div>
+            <div class="touch-command">
+              <button type="button" data-thrust="ShiftLeft" aria-label="Brake sideways">Brake</button>
+              <button type="button" data-thrust="Space" aria-label="Fire main engine">Thrust</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="inspector" aria-label="Live telemetry">
+          <section data-panel="orbit" class="inspector-section">
+            <div class="rail-heading"><h2>Body telemetry</h2><span class="status-mark" aria-hidden="true"></span></div>
+            <div class="inspector-content orbit-inspector">
+              <div class="portrait" id="portrait">
+                <canvas id="body-art" width="254" height="254" aria-hidden="true"></canvas>
+                <span class="portrait-corner top-left"></span><span class="portrait-corner bottom-right"></span>
+              </div>
+              <div class="body-summary">
+                <h2 id="body-name">Mars</h2>
+                <span id="body-kind" class="body-kind">Rocky planet</span>
+              </div>
+              <p id="body-description" class="description"></p>
+              <dl class="stats-grid">
+                <div><dt>Distance to Sun</dt><dd id="body-distance">—</dd></div>
+                <div><dt>Orbital speed</dt><dd id="body-speed">—</dd></div>
+                <div><dt>Mean radius</dt><dd id="body-radius">—</dd></div>
+                <div><dt>Orbital period</dt><dd id="body-period">—</dd></div>
+                <div><dt>Surface gravity</dt><dd id="body-gravity">—</dd></div>
+                <div><dt>Eccentricity</dt><dd id="body-eccentricity">—</dd></div>
+              </dl>
+              <div class="panel-actions">
+                <button type="button" class="action-button subtle" id="focus-body">Focus on Mars <span aria-hidden="true">⌖</span></button>
+                <button type="button" class="action-button primary" id="launch-mission">Open Mars mission <span aria-hidden="true">↗</span></button>
+              </div>
+            </div>
+          </section>
+          <section data-panel="impact" class="inspector-section" hidden>
+            <div class="rail-heading"><h2>Impact telemetry</h2><span class="status-mark" aria-hidden="true"></span></div>
+            <div class="inspector-content">
+              <div class="technical-kicker">Main belt · local frame</div>
+              <h2 class="panel-title" id="trial-name">Glancing</h2>
+              <p class="description" id="trial-description">The rocks strike off-center and deflect sideways.</p>
+              <dl class="stats-grid">
+                <div><dt>A-17 speed</dt><dd id="speed-a">210 m/s</dd></div>
+                <div><dt>B-04 speed</dt><dd id="speed-b">330 m/s</dd></div>
+                <div><dt>Separation</dt><dd id="separation">6.05 km</dd></div>
+                <div><dt>Impact time</dt><dd id="impact-time">—</dd></div>
+              </dl>
+              <div class="meter-block">
+                <label for="energy-meter">Kinetic energy retained</label><span id="energy-text">100%</span>
+                <progress id="energy-meter" max="1" value="1"></progress>
+              </div>
+              <p class="panel-result" id="impact-result" role="status">Ready to run.</p>
+              <div class="panel-actions">
+                <button type="button" class="action-button primary" id="run-experiment">Run experiment <span aria-hidden="true">↗</span></button>
+                <button type="button" class="action-button subtle" id="reset-experiment">Reset trial <span aria-hidden="true">↺</span></button>
+              </div>
+            </div>
+          </section>
+          <section data-panel="flight" class="inspector-section" hidden>
+            <div class="rail-heading"><h2>Flight telemetry</h2><span class="status-mark" aria-hidden="true"></span></div>
+            <div class="inspector-content">
+              <div class="technical-kicker warm" id="flight-checkpoint">Inbound approach</div>
+              <h2 class="panel-title">Mars landing</h2>
+              <p class="description">Touch down inside the marked zone at 5 m/s or less vertically and 4 m/s or less sideways.</p>
+              <dl class="stats-grid">
+                <div><dt>Vertical speed</dt><dd id="vertical-speed">−920 m/s</dd></div>
+                <div><dt>Lateral speed</dt><dd id="lateral-speed">478 m/s</dd></div>
+                <div><dt>Pad distance</dt><dd id="pad-distance">53.9 km</dd></div>
+                <div><dt>Thrust</dt><dd id="throttle">0%</dd></div>
+              </dl>
+              <div class="meter-block">
+                <label for="fuel-meter">Propellant remaining</label><span id="fuel-text">13,500 kg</span>
+                <progress id="fuel-meter" max="1" value="1"></progress>
+              </div>
+              <p class="panel-result" id="flight-result" role="status">Ready at the approach checkpoint.</p>
+              <div class="panel-actions">
+                <button type="button" class="action-button primary" id="start-flight">Start manual flight <span aria-hidden="true">↗</span></button>
+                <button type="button" class="action-button subtle" id="guidance" aria-pressed="false">Engage guidance <span aria-hidden="true">⌖</span></button>
+                <button type="button" class="text-button" id="flight-checkpoint-action">Practice final descent</button>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="timebar" aria-label="Time controls">
+        <div class="time-group">
+          <div class="transport" role="group" aria-label="Playback">
+            <button type="button" class="icon-button" id="time-reset" aria-label="Reset simulation" title="Reset simulation"><span class="reset-icon" aria-hidden="true">↺</span></button>
+            <button type="button" class="icon-button main-transport" id="time-play" aria-label="Pause simulation" title="Pause simulation"><span class="play-icon" aria-hidden="true"></span></button>
+            <button type="button" class="icon-button" id="time-step" aria-label="Step simulation" title="Step simulation" disabled><span class="step-icon" aria-hidden="true"></span></button>
+          </div>
+          <div class="sim-date"><span class="eyebrow" id="time-label">Simulation date</span><strong id="sim-date">01 Jan 2000 <small>12:00 UTC</small></strong></div>
+        </div>
+        <div class="rate-control">
+          <label class="eyebrow" for="time-rate">Time speed</label>
+          <button type="button" class="icon-button rate-button" id="rate-down" aria-label="Decrease time speed">−</button>
+          <input type="range" id="time-rate" min="0" max="5" step="1" value="3" aria-valuetext="1 day per second" />
+          <button type="button" class="icon-button rate-button" id="rate-up" aria-label="Increase time speed">+</button>
+          <output id="rate-value" for="time-rate">1 day/s</output>
+        </div>
+        <span class="time-note" id="time-note">Leapfrog · 1 h step</span>
+      </footer>
+    </div>
+
+    <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
+      <form method="dialog" class="help-header"><h2 id="help-title">Controls &amp; display</h2><button type="submit" class="icon-button" aria-label="Close help">×</button></form>
+      <dl class="help-controls">
+        <div><dt>Camera</dt><dd>Drag to rotate, scroll or pinch to zoom. In the observatory, right-drag to pan.</dd></div>
+        <div><dt>Time</dt><dd><kbd>P</kbd> pauses or resumes. Use the step button while paused.</dd></div>
+        <div><dt>Mars lander</dt><dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> translate. Hold <kbd>Space</kbd> for thrust and <kbd>Shift</kbd> to brake sideways. <kbd>F</kbd> toggles guidance. Manual thrust takes over immediately.</dd></div>
+      </dl>
+      <div class="quality-control"><label for="render-quality">Render resolution</label><select id="render-quality"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option></select></div>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
